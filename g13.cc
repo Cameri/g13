@@ -564,6 +564,12 @@ void init_keynames() {
   inpk(KEY_RIGHT);
   inpk(KEY_UP);
   inpk(KEY_DOWN);
+  inpk(KEY_INSERT);
+  inpk(KEY_DELETE);
+  inpk(KEY_HOME);
+  inpk(KEY_END);
+  inpk(KEY_PAGEUP);
+  inpk(KEY_PAGEDOWN);
 }
 void display_keys() {
   typedef std::map<std::string,int> mapType;
@@ -635,7 +641,8 @@ void g13_keypad::image(unsigned char *data, int size) {
 g13_keypad::g13_keypad(libusb_device_handle *handle, int id) {
     this->handle = handle;
     this->id = id;
-    this->stick_mode = STICK_KEYS;
+    //this->stick_mode = STICK_KEYS;
+    this->stick_mode = STICK_ABSOLUTE;
     this->stick_keys[STICK_LEFT] = KEY_LEFT;
     this->stick_keys[STICK_RIGHT] = KEY_RIGHT;
     this->stick_keys[STICK_UP] = KEY_UP;
