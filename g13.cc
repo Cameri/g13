@@ -110,8 +110,8 @@ void g13_parse_joystick(unsigned char *buf, g13_keypad *g13) {
   int key_up = g13->stick_keys[STICK_UP];
   int key_down = g13->stick_keys[STICK_DOWN];
   if(g13->stick_mode == STICK_ABSOLUTE) {
-    send_event(g13->uinput_file, EV_ABS, ABS_X, stick_x);
-    send_event(g13->uinput_file, EV_ABS, ABS_Y, stick_y);
+    send_event(g13->uinput_js_file, EV_ABS, ABS_X, stick_x);
+    send_event(g13->uinput_js_file, EV_ABS, ABS_Y, stick_y);
   } else if(g13->stick_mode == STICK_KEYS) {
     if(stick_x < 255/6) {
       send_event(g13->uinput_file, EV_KEY, key_left, 1);
@@ -255,6 +255,7 @@ int g13_create_fifo(g13_keypad *g13) {
   mkfifo(g13->fifo_name(), 0666);
   return open(g13->fifo_name(), O_RDWR | O_NONBLOCK);
 }
+
 int g13_create_uinput(g13_keypad *g13) {
   struct uinput_user_dev uinp;
   struct input_event event;
@@ -281,6 +282,51 @@ int g13_create_uinput(g13_keypad *g13) {
   uinp.id.bustype = BUS_USB;
   uinp.id.product = G13_PRODUCT_ID;
   uinp.id.vendor = G13_VENDOR_ID;
+
+  ioctl(ufile, UI_SET_EVBIT, EV_KEY);
+  ioctl(ufile, UI_SET_MSCBIT, MSC_SCAN);
+  for(int i = 0; i < 256; i++)
+    ioctl(ufile, UI_SET_KEYBIT, i);
+
+  int retcode = write(ufile, &uinp, sizeof(uinp));
+  if(retcode < 0) {
+    cerr << "Could not write to uinput device (" << retcode << ")" << endl;
+    return -1;
+  }
+  retcode = ioctl(ufile, UI_DEV_CREATE);
+  if(retcode) {
+    cerr << "Error creating uinput device for G13" << endl;
+    return -1;
+  }
+  return ufile;
+}
+
+int g13_create_js_uinput(g13_keypad *g13) {
+  struct uinput_user_dev uinp;
+  struct input_event event;
+  const char* dev_uinput_fname = access("/dev/input/uinput", F_OK)==0 ? "/dev/input/uinput"
+                               : access("/dev/uinput", F_OK)==0 ? "/dev/uinput"
+                               : 0;
+  if(!dev_uinput_fname) {
+      cerr << "Could not find an uinput device" << endl;
+      return -1;
+  }
+  if(access(dev_uinput_fname, W_OK) != 0) {
+      cerr << dev_uinput_fname << " doesn't grant write permissions" << endl;
+      return -1;
+  }
+  int ufile = open(dev_uinput_fname, O_WRONLY | O_NDELAY);
+  if(ufile <= 0) {
+    cerr << "Could not open uinput" << endl;
+    return -1;
+  }
+  memset(&uinp, 0, sizeof(uinp));
+  char name[] = "G13 Joystick";
+  strncpy(uinp.name, name, sizeof(name));
+  uinp.id.version = 1;
+  uinp.id.bustype = BUS_USB;
+  uinp.id.product = G13_PRODUCT_ID;
+  uinp.id.vendor = G13_VENDOR_ID;
   uinp.absmin[ABS_X] = 0;
   uinp.absmin[ABS_Y] = 0;
   uinp.absmax[ABS_X] = 0xff;
@@ -290,16 +336,12 @@ int g13_create_uinput(g13_keypad *g13) {
   //  uinp.absflat[ABS_X] = 0x80;
   //  uinp.absflat[ABS_Y] = 0x80;
 
-  ioctl(ufile, UI_SET_EVBIT, EV_KEY);
   ioctl(ufile, UI_SET_EVBIT, EV_ABS);
   /*  ioctl(ufile, UI_SET_EVBIT, EV_REL);*/
-  ioctl(ufile, UI_SET_MSCBIT, MSC_SCAN);
   ioctl(ufile, UI_SET_ABSBIT, ABS_X);
   ioctl(ufile, UI_SET_ABSBIT, ABS_Y);
   /*  ioctl(ufile, UI_SET_RELBIT, REL_X);
       ioctl(ufile, UI_SET_RELBIT, REL_Y);*/
-  for(int i = 0; i < 256; i++)
-    ioctl(ufile, UI_SET_KEYBIT, i);
   ioctl(ufile, UI_SET_KEYBIT, BTN_THUMB);
 
   int retcode = write(ufile, &uinp, sizeof(uinp));
@@ -325,6 +367,7 @@ void register_g13(libusb_context *ctx, g13_keypad *g13) {
   g13_set_key_color(g13->handle, red, green, blue);
   g13_write_lcd(ctx, g13->handle, g13_logo, sizeof(g13_logo));
   g13->uinput_file = g13_create_uinput(g13);
+  g13->uinput_js_file = g13_create_js_uinput(g13);
   g13->fifo = g13_create_fifo(g13);
 }
 
@@ -382,7 +425,9 @@ void g13_destroy_fifo(g13_keypad *g13) {
 }
 void g13_destroy_uinput(g13_keypad *g13) {
   ioctl(g13->uinput_file, UI_DEV_DESTROY);
+  ioctl(g13->uinput_js_file, UI_DEV_DESTROY);
   close(g13->uinput_file);
+  close(g13->uinput_js_file);
 }
 
 
