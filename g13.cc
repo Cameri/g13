@@ -389,6 +389,7 @@ void g13_write_lcd_file(libusb_context *ctx, g13_keypad *g13, string filename) {
   filestr.close();
   g13_write_lcd(ctx, g13->handle, (unsigned char *)buffer, size);
 }
+
 int g13_read_keys(g13_keypad *g13) {
   unsigned char buffer[G13_REPORT_SIZE];
   int size;
@@ -420,9 +421,11 @@ int g13_read_keys(g13_keypad *g13) {
   }
   return 0;
 }
+
 void g13_destroy_fifo(g13_keypad *g13) {
   remove(g13->fifo_name());
 }
+
 void g13_destroy_uinput(g13_keypad *g13) {
   ioctl(g13->uinput_file, UI_DEV_DESTROY);
   ioctl(g13->uinput_js_file, UI_DEV_DESTROY);
@@ -444,6 +447,7 @@ void cleanup(int n = 0) {
   }
   libusb_exit(ctx);
 }
+
 bool running = true;
 void set_stop(int) {
   running = false;
@@ -478,7 +482,9 @@ void g13_read_commands(g13_keypad *g13) {
 	}
       }
     }
-  }}
+  }
+}
+
 std::map<int,std::string> key_to_name;
 std::map<std::string,int> name_to_key;
 std::map<int,std::string> input_key_to_name;
@@ -616,6 +622,7 @@ void init_keynames() {
   inpk(KEY_PAGEUP);
   inpk(KEY_PAGEDOWN);
 }
+
 void display_keys() {
   typedef std::map<std::string,int> mapType;
   std::cout << "Known keys on G13:" << std::endl;
@@ -629,8 +636,8 @@ void display_keys() {
     std::cout << item.first << " ";
   }
   std::cout << std::endl;
-
 }
+
 int main(int argc, char *argv[]) {
   init_keynames();
   display_keys();
@@ -686,8 +693,8 @@ void g13_keypad::image(unsigned char *data, int size) {
 g13_keypad::g13_keypad(libusb_device_handle *handle, int id) {
     this->handle = handle;
     this->id = id;
-    //this->stick_mode = STICK_KEYS;
-    this->stick_mode = STICK_ABSOLUTE;
+    this->stick_mode = STICK_KEYS;
+    //this->stick_mode = STICK_ABSOLUTE;
     this->stick_keys[STICK_LEFT] = KEY_LEFT;
     this->stick_keys[STICK_RIGHT] = KEY_RIGHT;
     this->stick_keys[STICK_UP] = KEY_UP;
@@ -697,28 +704,28 @@ g13_keypad::g13_keypad(libusb_device_handle *handle, int id) {
       keys[i] = false;
     for(int i = 0; i < G13_NUM_KEYS; i++)
       map[i] = KEY_A;
-    /*      map = { KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H,
-              KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P,
-              KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, 0, 0,
-              KEY_W, KEY_X, KEY_Y, KEY_Z, KEY_1, KEY_2, KEY_3, KEY_4,
-              KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_F1, KEY_F2 };*/
-    // starcraft 2
-    // map = { KEY_5, KEY_3, KEY_1, KEY_0, KEY_2, KEY_4, KEY_6,
-    //         KEY_V, KEY_F, KEY_E, KEY_C, KEY_B, KEY_G, KEY_I,
-    //         KEY_LEFTSHIFT, KEY_M, KEY_T, KEY_L, KEY_H,
-    //         KEY_A, KEY_S, KEY_LEFTCTRL, 0, 0,
-    //         KEY_F1, KEY_N, KEY_R, KEY_P, KEY_K, KEY_D, KEY_X, KEY_Y,
-    // 	    KEY_Z, KEY_TAB, KEY_W, KEY_BACKSPACE, 0, 0, 0, 0};
     }
 
-    void g13_keypad::command(char const *str) {
+void g13_keypad::command(char const *str) {
     int red, green, blue, mod;
     char keyname[256];
     char binding[256];
+    char jsmode[256];
     if(sscanf(str, "rgb %i %i %i", &red, &green, &blue) == 3) {
       g13_set_key_color(handle, red, green, blue);
     } else if(sscanf(str, "mod %i", &mod) == 1) {
       g13_set_mode_leds(handle, mod);
+    } else if(sscanf(str, "jsmode %255s", jsmode) == 1) {
+        std::string js_mode(jsmode);
+        if(js_mode == "STICK_ABSOLUTE") {
+          this->stick_mode = STICK_ABSOLUTE; }
+        else if(js_mode == "STICK_KEYS") {
+          this->stick_mode = STICK_KEYS; }
+        /*else if(js_mode == "STICK_RELATIVE") {
+          this->stick_mode = STICK_RELATIVE; }*/
+      else {
+          cerr << "unknown joystick mode: " << jsmode << endl;
+      }
     } else if(sscanf(str, "bind %255s %255s", keyname, binding) == 2) {
       std::string key_name(keyname);
       if(input_name_to_key.find(binding) != input_name_to_key.end()) {
