@@ -78,6 +78,7 @@ void g13_set_mode_leds(libusb_device_handle *handle, int leds) {
     return;
   }
 }
+
 void g13_set_key_color(libusb_device_handle *handle, int red, int green, int blue) {
   int error;
   unsigned char usb_data[] = { 5, 0, 0, 0, 0 };
@@ -91,6 +92,7 @@ void g13_set_key_color(libusb_device_handle *handle, int red, int green, int blu
     return;
   }
 }
+
 void send_event(int file, int type, int code, int val) {
   struct timeval tvl;
   struct input_event event;
@@ -102,6 +104,7 @@ void send_event(int file, int type, int code, int val) {
   event.value = val;
   write(file, &event, sizeof(event));
 }
+
 void g13_parse_joystick(unsigned char *buf, g13_keypad *g13) {
   int stick_x = buf[1];
   int stick_y = buf[2];
@@ -138,6 +141,7 @@ void g13_parse_joystick(unsigned char *buf, g13_keypad *g13) {
           send_event(g13->uinput_file, EV_REL, REL_Y, stick_y/16 - 8);*/
   }
 }
+
 void g13_parse_key(int key, unsigned char *byte, g13_keypad *g13) {
   unsigned char actual_byte = byte[key / 8];
   unsigned char mask = 1 << (key % 8);
@@ -146,6 +150,7 @@ void g13_parse_key(int key, unsigned char *byte, g13_keypad *g13) {
     send_event(g13->uinput_file, EV_KEY, g13->mapping(key), g13->is_set(key));
   }
 }
+
 void g13_parse_keys(unsigned char *buf, g13_keypad *g13) {
   g13_parse_key(G13_KEY_G1, buf+3, g13);
   g13_parse_key(G13_KEY_G2, buf+3, g13);
@@ -201,6 +206,7 @@ void g13_init_lcd(libusb_device_handle *handle) {
     cerr << "Error when initialising lcd endpoint" << endl;
   }
 }
+
 void g13_deregister(g13_keypad *g13) {
   libusb_release_interface(g13->handle, 0);
   libusb_close(g13->handle);
@@ -234,8 +240,6 @@ void discover_g13s(libusb_device **devs, ssize_t count, vector<g13_keypad*>& g13
   }
 }
 
-
-
 void g13_write_lcd(libusb_context *ctx, libusb_device_handle *handle, unsigned char *data, size_t size) {
   g13_init_lcd(handle);
   if(size != G13_LCD_BUFFER_SIZE) {
@@ -251,6 +255,7 @@ void g13_write_lcd(libusb_context *ctx, libusb_device_handle *handle, unsigned c
   if(error)
     cerr << "Error when transfering image: " << error << ", " << bytes_written << " bytes written" << endl;
 }
+
 int g13_create_fifo(g13_keypad *g13) {
   mkfifo(g13->fifo_name(), 0666);
   return open(g13->fifo_name(), O_RDWR | O_NONBLOCK);
@@ -452,6 +457,7 @@ bool running = true;
 void set_stop(int) {
   running = false;
 }
+
 void g13_read_commands(g13_keypad *g13) {
   fd_set set;
   FD_ZERO(&set);
@@ -465,7 +471,7 @@ void g13_read_commands(g13_keypad *g13) {
     memset(buf, 0, 1024*1024);
     ret = read(g13->fifo, buf, 1024*1024);
     //    std::cout << "INFO: read " << ret << " characters" << std::endl;
-    if(ret == 960) { // TODO probably image, for now, don't test, just assume image
+    if(ret == G13_LCD_BUFFER_SIZE) { // TODO probably image, for now, don't test, just assume image
       g13->image(buf, ret);
     } else {
       std::string buffer = reinterpret_cast<const char*>(buf);
@@ -489,6 +495,7 @@ std::map<int,std::string> key_to_name;
 std::map<std::string,int> name_to_key;
 std::map<int,std::string> input_key_to_name;
 std::map<std::string,int> input_name_to_key;
+
 void init_keynames() {
 #define g13k(symbol,name) { key_to_name[symbol] = name; name_to_key[name] = symbol; }
 #define inpk(symbol) { input_key_to_name[symbol] = #symbol; input_name_to_key[#symbol] = symbol; }
