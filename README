@@ -38,7 +38,7 @@ would set M1, M3 and MR, and unset M2).
 
 This binds a key. The possible values of <keyname> are shown upon startup (e.g. G1), same for <binding> (e.g. KEY_LEFTSHIFT).
 
-*** smode <mode>
+*** jsmode <mode>
 
 The stick can be used as an absolute input device or can send key events. Valid modes are: STICK_KEYS and STICK_ABSOLUTE.
 
