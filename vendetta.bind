@@ -2,6 +2,11 @@
 rgb 200 0 0
 # Joystick please
 jsmode STICK_ABSOLUTE
+#jsmode STICK_KEYS
+#bind STICK_LEFT KEY_A
+#bind STICK_RIGHT KEY_D
+#bind STICK_UP KEY_R
+#bind STICK_DOWN KEY_F
 # Misc stuff
 bind G1 KEY_HOME
 bind G2 KEY_LEFTBRACE
@@ -29,3 +34,8 @@ bind G14 KEY_ENTER
 # Buttons near joystick
 bind LEFT KEY_SPACE
 bind DOWN KEY_TAB
+# Buttons at the top
+bind L1 KEY_F2
+bind L2 KEY_F3
+bind L3 KEY_F6
+bind L4 KEY_F7

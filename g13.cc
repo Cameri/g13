@@ -193,14 +193,16 @@ void g13_parse_keys(unsigned char *buf, g13_keypad *g13) {
   g13_parse_key(G13_KEY_TOP, buf+3, g13);
   g13_parse_key(G13_KEY_LIGHT, buf+3, g13);
   //  g13_parse_key(G13_KEY_LIGHT2, buf+3, file);
-  /* cout << hex << setw(2) << setfill('0') << (int)buf[7];
+  /* 
+  cout << hex << setw(2) << setfill('0') << (int)buf[7];
   cout << hex << setw(2) << setfill('0') << (int)buf[6];
   cout << hex << setw(2) << setfill('0') << (int)buf[5];
   cout << hex << setw(2) << setfill('0') << (int)buf[4];
   cout << hex << setw(2) << setfill('0') << (int)buf[3];
   cout << hex << setw(2) << setfill('0') << (int)buf[2];
   cout << hex << setw(2) << setfill('0') << (int)buf[1];
-  cout << hex << setw(2) << setfill('0') << (int)buf[0] << endl;*/
+  cout << hex << setw(2) << setfill('0') << (int)buf[0] << endl;
+  */ 
 }
 
 void g13_init_lcd(libusb_device_handle *handle) {
@@ -339,10 +341,10 @@ int g13_create_js_uinput(g13_keypad *g13) {
   uinp.absmin[ABS_Y] = 0;
   uinp.absmax[ABS_X] = 0xff;
   uinp.absmax[ABS_Y] = 0xff;
-  //  uinp.absfuzz[ABS_X] = 4;
-  //  uinp.absfuzz[ABS_Y] = 4;
-  //  uinp.absflat[ABS_X] = 0x80;
-  //  uinp.absflat[ABS_Y] = 0x80;
+  uinp.absfuzz[ABS_X] = 0;
+  uinp.absfuzz[ABS_Y] = 0;
+  //uinp.absflat[ABS_X] = 0x80;
+  //uinp.absflat[ABS_Y] = 0x80;
 
   ioctl(ufile, UI_SET_EVBIT, EV_ABS);
   /*  ioctl(ufile, UI_SET_EVBIT, EV_REL);*/
@@ -401,9 +403,8 @@ void g13_write_lcd_file(libusb_context *ctx, g13_keypad *g13, string filename) {
 int g13_read_keys(g13_keypad *g13) {
   unsigned char buffer[G13_REPORT_SIZE];
   int size;
-  int error = libusb_interrupt_transfer(g13->handle, LIBUSB_ENDPOINT_IN | G13_KEY_ENDPOINT, buffer, G13_REPORT_SIZE, &size, 1000);
-  if(error && error != LIBUSB_ERROR_TIMEOUT && error != LIBUSB_ERROR_PIPE) {
-      //Ignoring LIBUSB_ERROR_PIPE to work around a problem with Linux 3.1.1 on my Arch box.
+  int error = libusb_interrupt_transfer(g13->handle, LIBUSB_ENDPOINT_IN | G13_KEY_ENDPOINT, buffer, sizeof(buffer), &size, 1000);
+  if(error && error != LIBUSB_ERROR_TIMEOUT) {
     std::map<int,std::string> errors;
     errors[LIBUSB_SUCCESS] = "LIBUSB_SUCCESS";
     errors[LIBUSB_ERROR_IO] = "LIBUSB_ERROR_IO";
@@ -427,6 +428,7 @@ int g13_read_keys(g13_keypad *g13) {
     g13_parse_joystick(buffer, g13);
     g13_parse_keys(buffer, g13);
     send_event(g13->uinput_file, EV_SYN, SYN_REPORT, 0);
+    send_event(g13->uinput_js_file, EV_SYN, SYN_REPORT, 0);
   }
   else if (size != 0) {
     cerr << "wtf! size=";
