@@ -78,6 +78,7 @@ void g13_set_mode_leds(libusb_device_handle *handle, int leds) {
     return;
   }
 }
+
 void g13_set_key_color(libusb_device_handle *handle, int red, int green, int blue) {
   int error;
   unsigned char usb_data[] = { 5, 0, 0, 0, 0 };
@@ -91,6 +92,7 @@ void g13_set_key_color(libusb_device_handle *handle, int red, int green, int blu
     return;
   }
 }
+
 void send_event(int file, int type, int code, int val) {
   struct timeval tvl;
   struct input_event event;
@@ -102,6 +104,7 @@ void send_event(int file, int type, int code, int val) {
   event.value = val;
   write(file, &event, sizeof(event));
 }
+
 void g13_parse_joystick(unsigned char *buf, g13_keypad *g13) {
   int stick_x = buf[1];
   int stick_y = buf[2];
@@ -110,8 +113,8 @@ void g13_parse_joystick(unsigned char *buf, g13_keypad *g13) {
   int key_up = g13->stick_keys[STICK_UP];
   int key_down = g13->stick_keys[STICK_DOWN];
   if(g13->stick_mode == STICK_ABSOLUTE) {
-    send_event(g13->uinput_file, EV_ABS, ABS_X, stick_x);
-    send_event(g13->uinput_file, EV_ABS, ABS_Y, stick_y);
+    send_event(g13->uinput_js_file, EV_ABS, ABS_X, stick_x);
+    send_event(g13->uinput_js_file, EV_ABS, ABS_Y, stick_y);
   } else if(g13->stick_mode == STICK_KEYS) {
     if(stick_x < 255/6) {
       send_event(g13->uinput_file, EV_KEY, key_left, 1);
@@ -138,6 +141,7 @@ void g13_parse_joystick(unsigned char *buf, g13_keypad *g13) {
           send_event(g13->uinput_file, EV_REL, REL_Y, stick_y/16 - 8);*/
   }
 }
+
 void g13_parse_key(int key, unsigned char *byte, g13_keypad *g13) {
   unsigned char actual_byte = byte[key / 8];
   unsigned char mask = 1 << (key % 8);
@@ -146,6 +150,7 @@ void g13_parse_key(int key, unsigned char *byte, g13_keypad *g13) {
     send_event(g13->uinput_file, EV_KEY, g13->mapping(key), g13->is_set(key));
   }
 }
+
 void g13_parse_keys(unsigned char *buf, g13_keypad *g13) {
   g13_parse_key(G13_KEY_G1, buf+3, g13);
   g13_parse_key(G13_KEY_G2, buf+3, g13);
@@ -188,11 +193,16 @@ void g13_parse_keys(unsigned char *buf, g13_keypad *g13) {
   g13_parse_key(G13_KEY_TOP, buf+3, g13);
   g13_parse_key(G13_KEY_LIGHT, buf+3, g13);
   //  g13_parse_key(G13_KEY_LIGHT2, buf+3, file);
-  /*  cout << hex << setw(2) << setfill('0') << (int)buf[7];
+  /* 
+  cout << hex << setw(2) << setfill('0') << (int)buf[7];
   cout << hex << setw(2) << setfill('0') << (int)buf[6];
   cout << hex << setw(2) << setfill('0') << (int)buf[5];
   cout << hex << setw(2) << setfill('0') << (int)buf[4];
-  cout << hex << setw(2) << setfill('0') << (int)buf[3] << endl;*/
+  cout << hex << setw(2) << setfill('0') << (int)buf[3];
+  cout << hex << setw(2) << setfill('0') << (int)buf[2];
+  cout << hex << setw(2) << setfill('0') << (int)buf[1];
+  cout << hex << setw(2) << setfill('0') << (int)buf[0] << endl;
+  */ 
 }
 
 void g13_init_lcd(libusb_device_handle *handle) {
@@ -201,6 +211,7 @@ void g13_init_lcd(libusb_device_handle *handle) {
     cerr << "Error when initialising lcd endpoint" << endl;
   }
 }
+
 void g13_deregister(g13_keypad *g13) {
   libusb_release_interface(g13->handle, 0);
   libusb_close(g13->handle);
@@ -234,8 +245,6 @@ void discover_g13s(libusb_device **devs, ssize_t count, vector<g13_keypad*>& g13
   }
 }
 
-
-
 void g13_write_lcd(libusb_context *ctx, libusb_device_handle *handle, unsigned char *data, size_t size) {
   g13_init_lcd(handle);
   if(size != G13_LCD_BUFFER_SIZE) {
@@ -251,10 +260,12 @@ void g13_write_lcd(libusb_context *ctx, libusb_device_handle *handle, unsigned c
   if(error)
     cerr << "Error when transfering image: " << error << ", " << bytes_written << " bytes written" << endl;
 }
+
 int g13_create_fifo(g13_keypad *g13) {
   mkfifo(g13->fifo_name(), 0666);
   return open(g13->fifo_name(), O_RDWR | O_NONBLOCK);
 }
+
 int g13_create_uinput(g13_keypad *g13) {
   struct uinput_user_dev uinp;
   struct input_event event;
@@ -281,25 +292,66 @@ int g13_create_uinput(g13_keypad *g13) {
   uinp.id.bustype = BUS_USB;
   uinp.id.product = G13_PRODUCT_ID;
   uinp.id.vendor = G13_VENDOR_ID;
+
+  ioctl(ufile, UI_SET_EVBIT, EV_KEY);
+  ioctl(ufile, UI_SET_MSCBIT, MSC_SCAN);
+  for(int i = 0; i < 256; i++)
+    ioctl(ufile, UI_SET_KEYBIT, i);
+
+  int retcode = write(ufile, &uinp, sizeof(uinp));
+  if(retcode < 0) {
+    cerr << "Could not write to uinput device (" << retcode << ")" << endl;
+    return -1;
+  }
+  retcode = ioctl(ufile, UI_DEV_CREATE);
+  if(retcode) {
+    cerr << "Error creating uinput device for G13" << endl;
+    return -1;
+  }
+  return ufile;
+}
+
+int g13_create_js_uinput(g13_keypad *g13) {
+  struct uinput_user_dev uinp;
+  struct input_event event;
+  const char* dev_uinput_fname = access("/dev/input/uinput", F_OK)==0 ? "/dev/input/uinput"
+                               : access("/dev/uinput", F_OK)==0 ? "/dev/uinput"
+                               : 0;
+  if(!dev_uinput_fname) {
+      cerr << "Could not find an uinput device" << endl;
+      return -1;
+  }
+  if(access(dev_uinput_fname, W_OK) != 0) {
+      cerr << dev_uinput_fname << " doesn't grant write permissions" << endl;
+      return -1;
+  }
+  int ufile = open(dev_uinput_fname, O_WRONLY | O_NDELAY);
+  if(ufile <= 0) {
+    cerr << "Could not open uinput" << endl;
+    return -1;
+  }
+  memset(&uinp, 0, sizeof(uinp));
+  char name[] = "G13 Joystick";
+  strncpy(uinp.name, name, sizeof(name));
+  uinp.id.version = 1;
+  uinp.id.bustype = BUS_USB;
+  uinp.id.product = G13_PRODUCT_ID;
+  uinp.id.vendor = G13_VENDOR_ID;
   uinp.absmin[ABS_X] = 0;
   uinp.absmin[ABS_Y] = 0;
   uinp.absmax[ABS_X] = 0xff;
   uinp.absmax[ABS_Y] = 0xff;
-  //  uinp.absfuzz[ABS_X] = 4;
-  //  uinp.absfuzz[ABS_Y] = 4;
-  //  uinp.absflat[ABS_X] = 0x80;
-  //  uinp.absflat[ABS_Y] = 0x80;
+  uinp.absfuzz[ABS_X] = 0;
+  uinp.absfuzz[ABS_Y] = 0;
+  //uinp.absflat[ABS_X] = 0x80;
+  //uinp.absflat[ABS_Y] = 0x80;
 
-  ioctl(ufile, UI_SET_EVBIT, EV_KEY);
   ioctl(ufile, UI_SET_EVBIT, EV_ABS);
   /*  ioctl(ufile, UI_SET_EVBIT, EV_REL);*/
-  ioctl(ufile, UI_SET_MSCBIT, MSC_SCAN);
   ioctl(ufile, UI_SET_ABSBIT, ABS_X);
   ioctl(ufile, UI_SET_ABSBIT, ABS_Y);
   /*  ioctl(ufile, UI_SET_RELBIT, REL_X);
       ioctl(ufile, UI_SET_RELBIT, REL_Y);*/
-  for(int i = 0; i < 256; i++)
-    ioctl(ufile, UI_SET_KEYBIT, i);
   ioctl(ufile, UI_SET_KEYBIT, BTN_THUMB);
 
   int retcode = write(ufile, &uinp, sizeof(uinp));
@@ -325,6 +377,7 @@ void register_g13(libusb_context *ctx, g13_keypad *g13) {
   g13_set_key_color(g13->handle, red, green, blue);
   g13_write_lcd(ctx, g13->handle, g13_logo, sizeof(g13_logo));
   g13->uinput_file = g13_create_uinput(g13);
+  g13->uinput_js_file = g13_create_js_uinput(g13);
   g13->fifo = g13_create_fifo(g13);
 }
 
@@ -346,10 +399,11 @@ void g13_write_lcd_file(libusb_context *ctx, g13_keypad *g13, string filename) {
   filestr.close();
   g13_write_lcd(ctx, g13->handle, (unsigned char *)buffer, size);
 }
+
 int g13_read_keys(g13_keypad *g13) {
   unsigned char buffer[G13_REPORT_SIZE];
   int size;
-  int error = libusb_interrupt_transfer(g13->handle, LIBUSB_ENDPOINT_IN | G13_KEY_ENDPOINT, buffer, G13_REPORT_SIZE, &size, 1000);
+  int error = libusb_interrupt_transfer(g13->handle, LIBUSB_ENDPOINT_IN | G13_KEY_ENDPOINT, buffer, sizeof(buffer), &size, 1000);
   if(error && error != LIBUSB_ERROR_TIMEOUT) {
     std::map<int,std::string> errors;
     errors[LIBUSB_SUCCESS] = "LIBUSB_SUCCESS";
@@ -370,19 +424,33 @@ int g13_read_keys(g13_keypad *g13) {
     //    cerr << "Stopping daemon" << endl;
     //    return -1;
   }
-  if(size == G13_REPORT_SIZE) {
+  if(size == G13_REPORT_SIZE && (int)buffer[0] == 1) {
     g13_parse_joystick(buffer, g13);
     g13_parse_keys(buffer, g13);
     send_event(g13->uinput_file, EV_SYN, SYN_REPORT, 0);
+    send_event(g13->uinput_js_file, EV_SYN, SYN_REPORT, 0);
+  }
+  else if (size != 0) {
+    cerr << "wtf! size=";
+    cerr << size;
+    cerr << " buffer=";
+    for(int i = 0; i < size; i++) {
+        cerr << hex << setw(2) << setfill('0') << (int)buffer[i];
+    }
+    cerr << endl;
   }
   return 0;
 }
+
 void g13_destroy_fifo(g13_keypad *g13) {
   remove(g13->fifo_name());
 }
+
 void g13_destroy_uinput(g13_keypad *g13) {
   ioctl(g13->uinput_file, UI_DEV_DESTROY);
+  ioctl(g13->uinput_js_file, UI_DEV_DESTROY);
   close(g13->uinput_file);
+  close(g13->uinput_js_file);
 }
 
 
@@ -399,10 +467,12 @@ void cleanup(int n = 0) {
   }
   libusb_exit(ctx);
 }
+
 bool running = true;
 void set_stop(int) {
   running = false;
 }
+
 void g13_read_commands(g13_keypad *g13) {
   fd_set set;
   FD_ZERO(&set);
@@ -416,7 +486,7 @@ void g13_read_commands(g13_keypad *g13) {
     memset(buf, 0, 1024*1024);
     ret = read(g13->fifo, buf, 1024*1024);
     //    std::cout << "INFO: read " << ret << " characters" << std::endl;
-    if(ret == 960) { // TODO probably image, for now, don't test, just assume image
+    if(ret == G13_LCD_BUFFER_SIZE) { // TODO probably image, for now, don't test, just assume image
       g13->image(buf, ret);
     } else {
       std::string buffer = reinterpret_cast<const char*>(buf);
@@ -433,11 +503,14 @@ void g13_read_commands(g13_keypad *g13) {
 	}
       }
     }
-  }}
+  }
+}
+
 std::map<int,std::string> key_to_name;
 std::map<std::string,int> name_to_key;
 std::map<int,std::string> input_key_to_name;
 std::map<std::string,int> input_name_to_key;
+
 void init_keynames() {
 #define g13k(symbol,name) { key_to_name[symbol] = name; name_to_key[name] = symbol; }
 #define inpk(symbol) { input_key_to_name[symbol] = #symbol; input_name_to_key[#symbol] = symbol; }
@@ -568,14 +641,14 @@ void init_keynames() {
   inpk(KEY_RIGHT);
   inpk(KEY_UP);
   inpk(KEY_DOWN);
-  inpk(KEY_PAGEUP);
-  inpk(KEY_PAGEDOWN);
-  inpk(KEY_HOME);
-  inpk(KEY_END);
   inpk(KEY_INSERT);
   inpk(KEY_DELETE);
-
+  inpk(KEY_HOME);
+  inpk(KEY_END);
+  inpk(KEY_PAGEUP);
+  inpk(KEY_PAGEDOWN);
 }
+
 void display_keys() {
   typedef std::map<std::string,int> mapType;
   std::cout << "Known keys on G13:" << std::endl;
@@ -589,8 +662,8 @@ void display_keys() {
     std::cout << item.first << " ";
   }
   std::cout << std::endl;
-
 }
+
 int main(int argc, char *argv[]) {
   init_keynames();
   display_keys();
@@ -647,6 +720,7 @@ g13_keypad::g13_keypad(libusb_device_handle *handle, int id) {
     this->handle = handle;
     this->id = id;
     this->stick_mode = STICK_KEYS;
+    //this->stick_mode = STICK_ABSOLUTE;
     this->stick_keys[STICK_LEFT] = KEY_LEFT;
     this->stick_keys[STICK_RIGHT] = KEY_RIGHT;
     this->stick_keys[STICK_UP] = KEY_UP;
@@ -656,28 +730,28 @@ g13_keypad::g13_keypad(libusb_device_handle *handle, int id) {
       keys[i] = false;
     for(int i = 0; i < G13_NUM_KEYS; i++)
       map[i] = KEY_A;
-    /*      map = { KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H,
-              KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P,
-              KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, 0, 0,
-              KEY_W, KEY_X, KEY_Y, KEY_Z, KEY_1, KEY_2, KEY_3, KEY_4,
-              KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_F1, KEY_F2 };*/
-    // starcraft 2
-    // map = { KEY_5, KEY_3, KEY_1, KEY_0, KEY_2, KEY_4, KEY_6,
-    //         KEY_V, KEY_F, KEY_E, KEY_C, KEY_B, KEY_G, KEY_I,
-    //         KEY_LEFTSHIFT, KEY_M, KEY_T, KEY_L, KEY_H,
-    //         KEY_A, KEY_S, KEY_LEFTCTRL, 0, 0,
-    //         KEY_F1, KEY_N, KEY_R, KEY_P, KEY_K, KEY_D, KEY_X, KEY_Y,
-    // 	    KEY_Z, KEY_TAB, KEY_W, KEY_BACKSPACE, 0, 0, 0, 0};
     }
 
-    void g13_keypad::command(char const *str) {
+void g13_keypad::command(char const *str) {
     int red, green, blue, mod;
     char keyname[256];
     char binding[256];
+    char jsmode[256];
     if(sscanf(str, "rgb %i %i %i", &red, &green, &blue) == 3) {
       g13_set_key_color(handle, red, green, blue);
     } else if(sscanf(str, "mod %i", &mod) == 1) {
       g13_set_mode_leds(handle, mod);
+    } else if(sscanf(str, "jsmode %255s", jsmode) == 1) {
+        std::string js_mode(jsmode);
+        if(js_mode == "STICK_ABSOLUTE") {
+          this->stick_mode = STICK_ABSOLUTE; }
+        else if(js_mode == "STICK_KEYS") {
+          this->stick_mode = STICK_KEYS; }
+        /*else if(js_mode == "STICK_RELATIVE") {
+          this->stick_mode = STICK_RELATIVE; }*/
+      else {
+          cerr << "unknown joystick mode: " << jsmode << endl;
+      }
     } else if(sscanf(str, "bind %255s %255s", keyname, binding) == 2) {
       std::string key_name(keyname);
       if(input_name_to_key.find(binding) != input_name_to_key.end()) {

@@ -18,6 +18,7 @@ enum stick_key_t { STICK_LEFT, STICK_UP, STICK_DOWN, STICK_RIGHT };
 struct g13_keypad {
   libusb_device_handle *handle;
   int uinput_file;
+  int uinput_js_file;
   int id;
   int fifo;
   stick_mode_t stick_mode;
